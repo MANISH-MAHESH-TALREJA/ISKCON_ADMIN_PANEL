@@ -1,0 +1,2364 @@
+<?php 
+include("includes/connection.php");
+include("includes/function.php"); 
+include("language/app_language.php");	
+include("smtp_email.php");
+
+error_reporting(0);
+
+$file_path = getBaseUrl();
+
+define("PACKAGE_NAME",$settings_details['package_name']);
+define("API_PAGE_LIMIT",$settings_details['api_page_limit']);
+define("HOME_LIMIT",$settings_details['home_limit']);
+define("VIDEO_STATUS",$settings_details['video_status']);
+define("NATIVE_POSITION",$settings_details['native_position']);
+define("NATIVE_ADS",$settings_details['native_ad']);
+
+$mysqli->set_charset('utf8mb4');
+
+date_default_timezone_set("Asia/Kolkata");
+
+
+if($settings_details['envato_buyer_name']=='' OR $settings_details['envato_purchase_code']=='' OR $settings_details['envato_purchased_status']==0) {  
+
+	$set = array('message' => 'Purchase code verification failed!','status'=>-1);	
+	
+	header( 'Content-Type: application/json; charset=utf-8' );
+	echo $val= str_replace('\\/', '/', json_encode($set,JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+	die();
+}
+
+function get_total_item($cat_id)
+{ 
+	global $mysqli;   
+
+	$qry_songs="SELECT COUNT(*) as num FROM tbl_diets WHERE `cat_id`='".$cat_id."'";
+
+	$total_items = mysqli_fetch_array(mysqli_query($mysqli,$qry_songs));
+	$total_items = $total_items['num'];
+
+	return $total_items;
+
+}
+function generateRandomPassword($length = 10) {
+	$characters = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+	$charactersLength = strlen($characters);
+	$randomString = '';
+	for ($i = 0; $i < $length; $i++) {
+		$randomString .= $characters[rand(0, $charactersLength - 1)];
+	}
+	return $randomString;
+}
+function get_thumb($filename,$thumb_size)
+{	
+	$file_path = getBaseUrl();
+
+	return $thumb_path=$file_path.'thumb.php?src='.$filename.'&size='.$thumb_size;
+}
+function get_subject_info($id,$field_name) 
+{
+	global $mysqli;
+
+	$qry_sub="SELECT * FROM tbl_contact_sub WHERE tbl_contact_sub.`id`='".$id."'";
+	$query1=mysqli_query($mysqli,$qry_sub);
+	$row_sub = mysqli_fetch_array($query1);
+
+	$num_rows1 = mysqli_num_rows($query1);
+	
+	if ($num_rows1 > 0)
+	{		 	
+		return $row_sub[$field_name];
+	}
+	else
+	{
+		return "";
+	}
+}
+function get_favourite_info($post_id,$user_id,$type)
+{
+	global $mysqli;
+
+	$sql="SELECT * FROM tbl_favourite WHERE tbl_favourite.`post_id`='$post_id' AND tbl_favourite.`user_id`='$user_id' AND `type`='$type'";
+	$res=mysqli_query($mysqli,$sql);
+
+	return ($res->num_rows == 1) ? 'true' : 'false';
+
+}
+function get_user_info($user_id,$field_name) 
+{
+	global $mysqli;
+
+	$qry_user="SELECT * FROM tbl_users WHERE `id`='".$user_id."'";
+	$query1=mysqli_query($mysqli,$qry_user);
+	$row_user = mysqli_fetch_array($query1);
+
+	$num_rows1 = mysqli_num_rows($query1);
+	
+	if ($num_rows1 > 0)
+	{		 	
+		return $row_user[$field_name];
+	}
+	else
+	{
+		return "";
+	}
+}
+
+$get_method = checkSignSalt($_POST['data']);	
+
+if($get_method['method_name']=="get_home")	
+{
+	$row['status'] = '1';
+	$row['message'] = '';
+
+	$ids=(isset($get_method['user_id']))?$get_method['user_id']:'';
+
+	$jsonObj_2= array();
+
+	$query_all="SELECT * FROM tbl_slider WHERE `status`='1' ORDER BY `id` DESC";
+
+	$sql_all = mysqli_query($mysqli,$query_all) or die(mysqli_error($mysqli));
+
+	while($data = mysqli_fetch_assoc($sql_all))
+	{
+		
+		$total_views=0;
+
+		$post_id=$data['post_id'];
+
+		switch ($data['slider_type']) {
+
+			case 'video':
+			if(VIDEO_STATUS==1){
+				$query="SELECT tbl_video.`video_id`,tbl_video.`video_title` ,tbl_video.`video_type`, tbl_video.`video_url` FROM tbl_video
+				WHERE tbl_video.`status`='1' AND tbl_video.`id`='$post_id' ORDER BY tbl_video.`id` DESC";	
+
+				$sql_res=mysqli_query($mysqli,$query) or die(mysqli_error($mysqli));
+
+				$row_data=mysqli_fetch_assoc($sql_res);
+			}	
+			$slider_title=(!empty($row_data['video_title']))?$row_data['video_title']:'';
+			$video_url=(!empty($row_data['video_url']))?$row_data['video_url']:'';
+			$video_id=(!empty($row_data['video_id']))?$row_data['video_id']:'';
+			$video_type=(!empty($row_data['video_type']))?$row_data['video_type']:'';
+
+			break;
+
+			case 'diet':
+
+			$query="SELECT tbl_diets.`diet_title`, tbl_diets.`diet_image` FROM tbl_diets
+			LEFT JOIN tbl_category ON tbl_diets.`cat_id`= tbl_category.`cid` 
+			WHERE tbl_diets.`status`='1' AND tbl_category.`status`='1' AND tbl_diets.`id`='$post_id' ORDER BY tbl_diets.`id` DESC";	
+
+			$sql_res=mysqli_query($mysqli,$query) or die(mysqli_error($mysqli));
+
+			$row_data=mysqli_fetch_assoc($sql_res);
+
+			$slider_title=(!empty($row_data['diet_title']))?$row_data['diet_title']:'';
+			$image=(!empty($row_data['diet_image']))?$row_data['diet_image']:'';
+
+			break;
+
+			default:
+			$slider_title=$data['slider_title'];
+			$video_id='';
+			$video_url='';
+			$video_type='';
+			$image=$data['external_image'];
+			break;
+		}
+		if($sql_res->num_rows == 0 AND $data['slider_type']!='external'){
+			continue;
+		}
+
+		$row2['id'] = $data['post_id'];
+		$row2['slider_type'] = $data['slider_type'];
+		$row2['slider_title'] = $slider_title;
+		$row2['thumbnail_b'] = get_thumb('images/'.$image,'650x350');
+		$row2['external_link'] = ($data['external_url']!='') ? $data['external_url'] : '';
+		$row2['video_id'] = (!empty($video_id)) ? $video_id : '';
+		$row2['video_url'] = (!empty($video_url)) ? $video_url : '';
+		$row2['video_type'] = (!empty($video_type)) ? $video_type : '';
+		
+		array_push($jsonObj_2,$row2);
+
+		//	mysqli_free_result($sql_res);
+	}
+
+		// slider status
+	$row['slider_list']=$jsonObj_2;
+
+	$jsonObj_3= array();	
+
+	$sql_all3="SELECT * FROM tbl_recent WHERE `user_id`='$ids' AND `recent_type`= 'diet' ORDER By `recent_date` LIMIT ".HOME_LIMIT;
+	$res_all3=mysqli_query($mysqli, $sql_all3);
+
+	while($data_all3 = mysqli_fetch_assoc($res_all3))
+	{	
+		$post_id=trim($data_all3['post_id']);
+
+		$query_all1="SELECT * FROM tbl_diets
+		WHERE tbl_diets.`id`='$post_id' AND tbl_diets.`status`=1 ORDER By `id` DESC";
+
+		$sql_all1 = mysqli_query($mysqli,$query_all1) or die (mysqli_error($mysqli));
+
+		while($data_all1 = mysqli_fetch_assoc($sql_all1))
+		{	
+			$row_all1['id'] = $data_all1['id'];
+			$row_all1['diet_title'] = stripslashes($data_all1['diet_title']);
+			$row_all1['diet_image'] = $file_path.'images/'.$data_all1['diet_image'];
+			$row_all1['diet_image_thumbnail'] = get_thumb('images/'.$data_all1['diet_image'],'160x100');
+
+			array_push($jsonObj_3,$row_all1);
+		}
+	}	
+
+	$row['recent_diet'] = $jsonObj_3;
+
+	$jsonObj_4= array();	
+
+	if(VIDEO_STATUS==1){
+
+		$sql_all3="SELECT * FROM tbl_recent WHERE `user_id`='$ids' AND `recent_type`= 'video' ORDER By `recent_date` DESC LIMIT ".HOME_LIMIT;
+		$res_all3=mysqli_query($mysqli, $sql_all3);
+
+		while($data_all3 = mysqli_fetch_assoc($res_all3))
+		{	
+			$post_id=trim($data_all3['post_id']);
+
+			$query_all0="SELECT * FROM tbl_video WHERE  tbl_video.`id`='$post_id' ORDER By id  DESC";
+
+			$sql_all0 = mysqli_query($mysqli,$query_all0) or die (mysqli_error($mysqli));
+
+			while($data_all = mysqli_fetch_assoc($sql_all0))
+			{	
+				$row_all['id'] = $data_all['id'];
+				$row_all['video_type'] = $data_all['video_type'];
+				$row_all['video_title'] = $data_all['video_title'];
+				$row_all['video_url'] = $data_all['video_url'];
+				$row_all['video_id'] = $data_all['video_id'];
+
+				if($data_all['video_type']=='server_url' or $data_all['video_type']=='local')
+				{
+					$row_all['video_thumbnail_b'] = $file_path.'images/'.$data_all['video_thumbnail'];
+					
+					$row_all['video_thumbnail_s'] = get_thumb('images/'.$data_all['video_thumbnail'],'160x100');
+				}
+				else
+				{
+					$row_all['video_thumbnail_b'] = $data_all['video_thumbnail'];
+					$row_all['video_thumbnail_s'] = $data_all['video_thumbnail'];
+				}
+
+				$row_all['is_fav']=get_favourite_info($data_all['id'],$ids,'video');
+
+				array_push($jsonObj_4,$row_all);
+
+			}
+		}
+	}
+
+	$row['recent_video'] = $jsonObj_4;
+
+	$jsonObj_1= array();
+
+	$cat_order=API_CAT_ORDER_BY;	
+	
+	$query="SELECT * FROM tbl_category
+	WHERE tbl_category.`show_on_home`=1 ORDER BY tbl_category.$cat_order ".API_CAT_POST_ORDER_BY." LIMIT 10";
+
+	$sql = mysqli_query($mysqli,$query)or die(mysqli_error($mysqli));
+
+	while($data = mysqli_fetch_assoc($sql))
+	{
+		$row1['cid'] = $data['cid'];
+		$row1['category_name'] = $data['category_name'];
+		$row1['category_image'] = $file_path.'images/'.$data['category_image'];
+		$row1['category_image_thumb'] = get_thumb('images/'.$data['category_image'],'150x75');
+
+		array_push($jsonObj_1,$row1);
+
+	}
+	
+	$row['cat_list'] = $jsonObj_1;
+	
+	$set = $row;	
+
+	header( 'Content-Type: application/json; charset=utf-8' );
+	echo $val= str_replace('\\/', '/', json_encode($set,JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+	die();
+
+}
+else if($get_method['method_name']=="get_category")
+{
+
+	$jsonObj= array();
+
+	$cid=API_CAT_ORDER_BY;
+
+	$page_limit=API_PAGE_LIMIT;
+
+	$limit=($get_method['page']-1) * $page_limit;
+
+	$query="SELECT * FROM tbl_category WHERE tbl_category.`status`=1 ORDER BY tbl_category.$cid LIMIT $limit, $page_limit";
+	$sql = mysqli_query($mysqli,$query)or die(mysqli_error($mysqli));
+
+	$j =(isset($get_method['ads_param'])) ? $get_method['ads_param']:'';
+
+	$data_arr=array();
+	
+	while($data = mysqli_fetch_assoc($sql))
+	{	
+		$data_arr[]=$data;
+	}
+
+	$var_j=0;
+
+	for ($i=0; $i < count($data_arr); $i++){ 
+
+		if(NATIVE_ADS=='true'){
+			if($j % NATIVE_POSITION == 0){
+
+				if(NATIVE_ADS=='true'){
+
+					$row['is_ads'] = true;
+					$row['cat_count'] = "";
+					$row['cid'] = "";
+					$row['category_name'] = "";
+					$row['category_image'] = "";
+					$row['category_image_thumb'] = "";
+
+					$row['native_ad_type'] = $settings_details['native_ad_type'];
+					$row['native_ad_id'] = ($settings_details['native_ad_type']=='facebook') ? $settings_details['native_facebook_id'] : $settings_details['native_ad_id'];
+
+					$i--;
+				}
+			}	
+			else{
+
+				$row['is_ads'] = false;
+				$row['cat_count'] = get_total_item($data_arr[$i]['cid']);
+				$row['cid'] = $data_arr[$i]['cid'];
+				$row['category_name'] = $data_arr[$i]['category_name'];
+				$row['category_image'] = $file_path.'images/'.$data_arr[$i]['category_image'];
+				$row['category_image_thumb'] = get_thumb('images/'.$data_arr[$i]['category_image'],'150x75');
+
+				$row['native_ad_type'] = "";
+				$row['native_ad_id'] = "";
+
+			}
+
+			$j++;
+		}
+
+		else{
+			$row['is_ads'] = false;
+			$row['cat_count'] = get_total_item($data_arr[$i]['cid']);
+			$row['cid'] = $data_arr[$i]['cid'];
+			$row['category_name'] = $data_arr[$i]['category_name'];
+			$row['category_image'] = $file_path.'images/'.$data_arr[$i]['category_image'];
+			$row['category_image_thumb'] = get_thumb('images/'.$data_arr[$i]['category_image'],'150x75');
+
+			$row['native_ad_type'] = "";
+			$row['native_ad_id'] = "";
+		}
+		
+		array_push($jsonObj,$row);
+		
+	}
+
+	$set['status'] = '1';
+	$set['message'] = '';
+	$set['ads_param'] = strval($j);
+	$set['DIET_APP'] = $jsonObj;
+
+	header( 'Content-Type: application/json; charset=utf-8' );
+	echo $val= str_replace('\\/', '/', json_encode($set,JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+	die();
+}	
+else if($get_method['method_name']=="diet_by_cat")
+{
+
+	$jsonObj= array();
+
+	$post_order_by=API_CAT_POST_ORDER_BY;
+
+	$cat_id=$get_method['cat_id'];	
+
+	$page_limit=API_PAGE_LIMIT;
+
+	$limit=($get_method['page']-1) * $page_limit;
+
+	$query="SELECT * FROM tbl_diets
+	LEFT JOIN tbl_category ON tbl_diets.`cat_id`= tbl_category.`cid` 
+	WHERE tbl_diets.`cat_id`='$cat_id' AND tbl_diets.`status`='1' ORDER BY tbl_diets.`id` ".$post_order_by." LIMIT $limit, $page_limit";
+
+	$sql = mysqli_query($mysqli,$query)or die(mysqli_error($mysqli));
+
+	$j =(isset($get_method['ads_param']))?$get_method['ads_param']:'';
+
+	$data_arr=array();
+	
+	while($data = mysqli_fetch_assoc($sql))
+	{	
+		$data_arr[]=$data;
+	}
+
+	$var_j=0;
+
+	for ($i=0; $i < count($data_arr); $i++){ 
+
+		if(NATIVE_ADS=='true'){
+			if($j % NATIVE_POSITION == 0){
+
+				if(NATIVE_ADS=='true'){
+
+					$row['is_ads'] = true;
+					$row['id'] ="";
+					$row['diet_title'] = "";
+					$row['diet_image'] = "";
+					$row['diet_image_thumbnail'] ="";
+
+					$row['native_ad_type'] = $settings_details['native_ad_type'];
+					$row['native_ad_id'] = ($settings_details['native_ad_type']=='facebook') ? $settings_details['native_facebook_id'] : $settings_details['native_ad_id'];
+
+					$i--;
+				}
+			}	
+			else{
+
+				$row['is_ads'] = false;
+				$row['id'] = $data_arr[$i]['id'];
+				$row['diet_title'] = stripslashes($data_arr[$i]['diet_title']);
+				$row['diet_image'] = $file_path.'images/'.$data_arr[$i]['diet_image'];
+				$row['diet_image_thumbnail'] = get_thumb('images/'.$data_arr[$i]['diet_image'],'650x350');
+
+				$row['native_ad_type'] = "";
+				$row['native_ad_id'] = "";
+			}
+
+			$j++;
+		}
+
+		else{
+			$row['is_ads'] = false;
+			$row['id'] = $data_arr[$i]['id'];
+			$row['diet_title'] = stripslashes($data_arr[$i]['diet_title']);
+			$row['diet_image'] = $file_path.'images/'.$data_arr[$i]['diet_image'];
+			$row['diet_image_thumbnail'] = get_thumb('images/'.$data_arr[$i]['diet_image'],'650x350');
+
+			$row['native_ad_type'] = "";
+			$row['native_ad_id'] = "";
+
+		}
+		
+		array_push($jsonObj,$row);
+		
+	}
+
+	$set['status'] = '1';
+	$set['message'] = '';
+	$set['ads_param'] = strval($j);
+	$set['DIET_APP'] = $jsonObj;
+
+	header( 'Content-Type: application/json; charset=utf-8' );
+	echo $val= str_replace('\\/', '/', json_encode($set,JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+	die();
+}	
+else if($get_method['method_name']=="recent_video")
+{
+
+	$jsonObj= array();	
+
+	$video_id=$get_method['video_id'];	
+	$user_id=(isset($get_method['user_id']))?$get_method['user_id']:'';
+
+	if(VIDEO_STATUS==1){
+
+		if($user_id > 0){
+
+			$sql_recent="SELECT * FROM tbl_recent WHERE `post_id`= '$video_id' AND `user_id`= '$user_id' ";
+			$res_recent=mysqli_query($mysqli, $sql_recent);
+			$num_rows = mysqli_num_rows($res_recent);
+
+			$recent_date=date('Y-m-d');
+
+			if ($num_rows == 0 && $user_id !='')
+			{
+
+				$data_log = array(
+					'user_id'  =>  $user_id,
+					'recent_type'  => 'video',
+					'post_id'  =>$video_id,
+					'recent_date' => $recent_date
+				);
+
+				$qry = Insert('tbl_recent',$data_log);
+
+			} 
+			else{
+				$recent_row = mysqli_fetch_assoc($res_recent);
+
+				$data1= array( 
+					'recent_date'  => $recent_date
+				);		
+
+				$qry=Update('tbl_recent', $data1, "WHERE re_id = '".$recent_row['re_id']."'");
+
+			}
+		}
+		$set=array('status' => '1','message' => '','msg' =>$app_lang['add_success'],'success'=>'1');
+	}else{
+
+		$set=array('status' => '1','message' => '','msg' =>$app_lang['not_recent_video'],'success'=>'0');
+	}
+	
+
+	header( 'Content-Type: application/json; charset=utf-8' );
+	echo $val= str_replace('\\/', '/', json_encode($set,JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+	die();	
+
+}
+else if($get_method['method_name']=="add_bmi")
+{
+
+	$jsonObj= array();	
+
+	$gender=$get_method['gender'];	
+	$bmi_score=$get_method['bmi_score'];
+	$user_id=$get_method['user_id'];
+	$bmi_status=$get_method['bmi_status'];
+
+	$date_time= date('d-m-Y h:i A');
+
+	$sql_recent="SELECT * FROM tbl_bmi WHERE `gender`= '$gender' AND `user_id`= '$user_id' ";
+	$res_recent=mysqli_query($mysqli, $sql_recent);
+	$num_rows = mysqli_num_rows($res_recent);
+
+	$data_log = array(
+		'user_id'  =>  $user_id,
+		'gender'  => $gender,
+		'bmi_score'  =>$bmi_score,
+		'date_time' => $date_time,
+		'bmi_status'  =>$bmi_status
+	);
+
+	$qry = Insert('tbl_bmi',$data_log);
+
+	$set=array('status' => '1','message' => '','msg' =>$app_lang['add_success'],'success'=>'1');
+
+	header( 'Content-Type: application/json; charset=utf-8' );
+	echo $val= str_replace('\\/', '/', json_encode($set,JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+	die();	
+
+}
+else if($get_method['method_name']=="get_bmi_history")
+{
+	$page_limit=API_PAGE_LIMIT;
+
+	$limit=($get_method['page']-1) * $page_limit;
+
+	$jsonObj= array();	
+
+	$user_id=$get_method['user_id'];
+	
+	$query="SELECT * FROM tbl_bmi WHERE tbl_bmi.`user_id`='$user_id' AND date_time ORDER BY tbl_bmi.`date_time` DESC LIMIT $limit, $page_limit" ;
+
+	$sql = mysqli_query($mysqli,$query)or die(mysqli_error($mysqli));
+
+	while($data = mysqli_fetch_assoc($sql))
+	{
+		$row['id'] = $data['id'];
+		$row['gender'] = $data['gender'];
+		$row['bmi_score'] = $data['bmi_score'];
+		$row['bmi_status'] = trim($data['bmi_status']);
+		$row['title'] = $data['date_time'];
+
+		array_push($jsonObj,$row);
+
+	}
+
+	$set['status'] = '1';
+	$set['message'] = '';
+	$set['DIET_APP'] = $jsonObj;
+
+	header( 'Content-Type: application/json; charset=utf-8' );
+	echo $val= str_replace('\\/', '/', json_encode($set,JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+	die();
+}
+else if($get_method['method_name']=="delete_bim_calculator")
+{
+	$id=$get_method['id'];
+	$user_id=$get_method['user_id'];
+
+	$deleteSql="DELETE FROM tbl_bmi WHERE `user_id`='$user_id' AND `id`='$id'";
+	if(mysqli_query($mysqli, $deleteSql)){
+		$set = array('status' => '1','message' => '','msg'=>$app_lang['delete_bim_cal'],'success'=>'1');
+	}
+	else{
+		$set = array('status' => '1','message' => '','msg'=>$app_lang['error_msg'],'success'=>'0');
+	}
+
+	header( 'Content-Type: application/json; charset=utf-8' );
+	echo $val= str_replace('\\/', '/', json_encode($set,JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+	die();	
+
+}
+else if($get_method['method_name']=="recent_views_all")
+{
+
+	$page_limit=API_PAGE_LIMIT;
+
+	$limit=($get_method['page']-1) * $page_limit;
+
+	$jsonObj= array();	
+
+	$user_id=(isset($get_method['user_id']))?$get_method['user_id']:'';	
+
+	$type=$get_method['type'];
+
+	if($get_method['type']=='video')	
+	{
+
+		if(VIDEO_STATUS==1){
+
+			$query_all0="SELECT * FROM tbl_video
+			LEFT JOIN tbl_recent ON tbl_video.`id`= tbl_recent.`post_id` 
+			WHERE tbl_video.`status`='1'  AND tbl_recent.`user_id`='$user_id' ORDER BY tbl_recent.`recent_date` DESC LIMIT $limit, $page_limit";
+
+			$sql0 = mysqli_query($mysqli,$query_all0)or die(mysqli_error($mysqli));
+
+			$j = (isset($get_method['ads_param']))?$get_method['ads_param']:'';
+
+			$data_arr0=array();
+
+			while($data0 = mysqli_fetch_assoc($sql0))
+			{	
+				$data_arr0[]=$data0;
+			}
+
+			$var_j=0;
+
+			for ($i=0; $i < count($data_arr0); $i++){ 
+
+				if(NATIVE_ADS=='true'){
+					if($j % NATIVE_POSITION == 0){
+
+						if(NATIVE_ADS=='true'){
+
+							$row0['is_ads'] = true;
+							$row0['id'] = "";
+							$row0['video_type'] = "";
+							$row0['video_title'] = "";
+							$row0['video_url'] = "";
+							$row0['video_id'] = "";
+							$row0['video_thumbnail_b'] = "";
+							$row0['video_thumbnail_s'] = "";
+
+							$row0['is_fav']="";
+
+							$row0['native_ad_type'] = $settings_details['native_ad_type'];
+							$row0['native_ad_id'] = ($settings_details['native_ad_type']=='facebook') ? $settings_details['native_facebook_id'] : $settings_details['native_ad_id'];
+
+							$i--;
+						}
+					}	
+					else{
+
+						$row0['is_ads'] = false;
+						$row0['id'] = $data_arr0[$i]['id'];
+						$row0['video_type'] = $data_arr0[$i]['video_type'];
+						$row0['video_title'] = $data_arr0[$i]['video_title'];
+						$row0['video_url'] = $data_arr0[$i]['video_url'];
+						$row0['video_id'] = $data_arr0[$i]['video_id'];
+
+						if($data_arr0[$i]['video_type']=='server_url' or $data_arr0[$i]['video_type']=='local')
+						{
+							$row0['video_thumbnail_b'] = $file_path.'images/'.$data_arr0[$i]['video_thumbnail'];
+							$row0['video_thumbnail_s'] = get_thumb('images/'.$data_arr0[$i]['video_thumbnail'],'650x350');
+						}
+						else
+						{
+							$row0['video_thumbnail_b'] = $data_arr0[$i]['video_thumbnail'];
+							$row0['video_thumbnail_s'] = $data_arr0[$i]['video_thumbnail'];
+						}
+
+						$row0['is_fav']=get_favourite_info($data_arr0[$i]['id'],$user_id,'video');
+
+						$row0['native_ad_type'] = "";
+						$row0['native_ad_id'] = "";
+					}
+
+					$j++;
+				}
+
+				else{
+					$row0['is_ads'] = false;
+					$row0['id'] = $data_arr0[$i]['id'];
+					$row0['video_type'] = $data_arr0[$i]['video_type'];
+					$row0['video_title'] = $data_arr0[$i]['video_title'];
+					$row0['video_url'] = $data_arr0[$i]['video_url'];
+					$row0['video_id'] = $data_arr0[$i]['video_id'];
+
+					if($data_arr0[$i]['video_type']=='server_url' or $data_arr0[$i]['video_type']=='local')
+					{
+						$row0['video_thumbnail_b'] = $file_path.'images/'.$data_arr0[$i]['video_thumbnail'];
+						$row0['video_thumbnail_s'] = get_thumb('images/'.$data_arr0[$i]['video_thumbnail'],'650x350');
+					}
+					else
+					{
+						$row0['video_thumbnail_b'] = $data_arr0[$i]['video_thumbnail'];
+						$row0['video_thumbnail_s'] = $data_arr0[$i]['video_thumbnail'];
+					}
+
+					$row0['is_fav']=get_favourite_info($data_arr0[$i]['id'],$user_id,'video');
+
+					$row0['native_ad_type'] = "";
+					$row0['native_ad_id'] = "";
+
+				}
+				array_push($jsonObj,$row0);
+			}
+		}
+	}
+	else{
+
+		$page_limit=API_PAGE_LIMIT;
+
+		$limit=($get_method['page']-1) * $page_limit;
+
+		$query_all="SELECT * FROM tbl_diets
+		LEFT JOIN tbl_recent ON tbl_diets.`id`= tbl_recent.`post_id` 
+		WHERE tbl_diets.`status`='1'  AND tbl_recent.`user_id`='$user_id' ORDER BY tbl_recent.`recent_date` DESC LIMIT $limit, $page_limit";
+
+		$sql1 = mysqli_query($mysqli,$query_all)or die(mysqli_error($mysqli));
+
+		$j =(isset($get_method['ads_param']))?$get_method['ads_param']:'';
+
+		$data_arr1=array();
+
+		while($data1 = mysqli_fetch_assoc($sql1))
+		{	
+			$data_arr1[]=$data1;
+		}
+
+		$var_j=0;
+
+		for ($i=0; $i < count($data_arr1); $i++){ 
+
+			if(NATIVE_ADS=='true'){
+				if($j % NATIVE_POSITION == 0){
+
+					if(NATIVE_ADS=='true'){
+
+						$row1['is_ads'] = true;
+						$row1['id'] ="";
+						$row1['diet_title'] = "";
+						$row1['diet_image'] = "";
+						$row1['diet_image_thumbnail'] ="";
+
+						$row1['native_ad_type'] = $settings_details['native_ad_type'];
+						$row1['native_ad_id'] = ($settings_details['native_ad_type']=='facebook') ? $settings_details['native_facebook_id'] : $settings_details['native_ad_id'];
+
+						$i--;
+					}
+				}	
+				else{
+
+					$row1['is_ads'] = false;
+					$row1['id'] = $data_arr1[$i]['id'];
+					$row1['diet_title'] = stripslashes($data_arr1[$i]['diet_title']);
+					$row1['diet_image'] = $file_path.'images/'.$data_arr1[$i]['diet_image'];
+					$row1['diet_image_thumbnail'] = get_thumb('images/'.$data_arr1[$i]['diet_image'],'650x350');
+
+					$row1['native_ad_type'] = "";
+					$row1['native_ad_id'] = "";
+				}
+
+				$j++;
+			}
+			else{
+				$row1['is_ads'] = false;
+				$row1['id'] = $data_arr1[$i]['id'];
+				$row1['diet_title'] = stripslashes($data_arr1[$i]['diet_title']);
+				$row1['diet_image'] = $file_path.'images/'.$data_arr1[$i]['diet_image'];
+				$row1['diet_image_thumbnail'] = get_thumb('images/'.$data_arr1[$i]['diet_image'],'650x350');
+
+				$row1['native_ad_type'] = "";
+				$row1['native_ad_id'] = "";
+
+			}
+
+			array_push($jsonObj,$row1);
+
+		}
+	}
+
+	$set['status'] = '1';
+	$set['message'] = '';
+	$set['ads_param'] = strval($j);
+	$set['DIET_APP'] = $jsonObj;
+
+	header( 'Content-Type: application/json; charset=utf-8' );
+	echo $val= str_replace('\\/', '/', json_encode($set,JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+	die();
+}
+
+
+
+else if($get_method['method_name']=="single_diet")
+{
+	$post_order_by=API_CAT_POST_ORDER_BY;
+
+	$jsonObj= array();	
+
+	$diet_id=$get_method['diet_id'];	
+	$user_id=(isset($get_method['user_id']))?cleanInput($get_method['user_id']):'';
+
+	$query="SELECT * FROM tbl_diets
+	WHERE tbl_diets.`id`='$diet_id' AND tbl_diets.`status`=1 ORDER BY tbl_diets.`id` ".$post_order_by."";
+
+	$sql = mysqli_query($mysqli,$query)or die(mysqli_error($mysqli));
+
+	while($data = mysqli_fetch_assoc($sql))
+	{	
+		$row['status'] = '1';
+		$row['message'] = '';
+		$row['msg'] ='';
+		$row['success'] = '1';	
+		$row['id'] = $data['id'];
+		$row['diet_title'] = stripslashes($data['diet_title']);
+		$row['diet_info'] = stripslashes($data['diet_info']);
+		$row['diet_image'] = $file_path.'images/'.$data['diet_image'];
+		$row['diet_image_thumbnail'] = get_thumb('images/'.$data['diet_image'],'650x350');
+
+		$row['is_fav']=get_favourite_info($data['id'],$user_id,'diet'); 
+
+		$row['share_link'] = $file_path.'view_diet.php?diet_id='.$diet_id;
+
+		array_push($jsonObj,$row);
+
+	}
+
+	if($user_id > 0){
+
+		$sql_recent="SELECT * FROM tbl_recent WHERE `post_id`= '$diet_id' AND `user_id`= '$user_id' ";
+		$res_recent=mysqli_query($mysqli, $sql_recent);
+		$num_rows = mysqli_num_rows($res_recent);
+
+		$recent_date=date('Y-m-d');
+
+		if ($num_rows == 0 && $user_id !='')
+		{
+
+			$data_log = array(
+				'user_id'  =>  $user_id,
+				'recent_type'  =>  'diet',
+				'post_id'  =>$row['id'],
+				'recent_date' => $recent_date
+			);
+
+			$qry = Insert('tbl_recent',$data_log);
+
+		} 
+		else{
+
+			$recent_row = mysqli_fetch_assoc($res_recent);
+
+			$data1= array( 
+				'recent_date'  => $recent_date
+			);		
+
+			$qry=Update('tbl_recent', $data1, "WHERE tbl_recent.`re_id` = '".$recent_row['re_id']."'");
+		}
+	}
+
+	$set = $row;
+
+	header( 'Content-Type: application/json; charset=utf-8' );
+	echo $val= str_replace('\\/', '/', json_encode($set,JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+	die();	
+
+}
+else if($get_method['method_name']=="add_favourite")
+{
+	$user_id =$get_method['user_id'];
+	$post_id =$get_method['id'];
+	$type =$get_method['type'];
+
+	if(VIDEO_STATUS==1){
+
+		$sql="SELECT * FROM tbl_favourite WHERE `user_id`='$user_id' AND `post_id`='$post_id' AND `type`='$type'";
+		$res=mysqli_query($mysqli, $sql);
+
+		if($res->num_rows == 0){
+			    //add to favourite list
+
+			$data = array( 
+				'post_id'  =>  $post_id,
+				'user_id'  =>  $user_id,
+				'type'  =>  $type,
+				'created_at'  =>  strtotime(date('d-m-Y h:i:s A'))
+			);      
+
+			$qry = Insert('tbl_favourite',$data);
+
+			$set = array('status' => '1','message' => '','msg'=>$app_lang['add_favourite'],'success'=>'1','is_favourite'=>true);
+
+		}
+		else{
+			// remove to favourite list
+			$deleteSql="DELETE FROM tbl_favourite WHERE `user_id`='$user_id' AND `post_id`='$post_id' AND `type`='$type'";
+
+			if(mysqli_query($mysqli, $deleteSql)){
+				$set = array('status' => '1','message' => '','msg'=>$app_lang['remove_favourite'],'success'=>'1','is_favourite'=>false);
+			}
+			else{
+				$set = array('status' => '1','message' => '','msg'=>$app_lang['error_msg'],'success'=>'0','is_favourite'=>false);
+			}
+		}
+	}else{
+		$set = array('status' => '1','message' => '','msg'=>$app_lang['please_try_video'],'success'=>'0');
+	}	
+	
+	header( 'Content-Type: application/json; charset=utf-8' );
+	echo $val= str_replace('\\/', '/', json_encode($set,JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+	die();
+
+}
+else if($get_method['method_name']=="get_favourite_list")
+{
+
+	$page_limit=API_PAGE_LIMIT;
+
+	$limit=($get_method['page']-1) * $page_limit;
+
+	$jsonObj= array();	
+
+	$user_id=$get_method['user_id'];	
+	$type=$get_method['type'];
+
+	if($get_method['type']=='video')	
+	{
+
+		if(VIDEO_STATUS==1){
+
+			$query_all="SELECT * FROM tbl_video
+			LEFT JOIN tbl_favourite ON tbl_video.`id`= tbl_favourite.`post_id` 
+			WHERE tbl_video.`status`='1'  AND tbl_favourite.`user_id`='$user_id' ORDER BY tbl_favourite.`fa_id` DESC LIMIT $limit, $page_limit";
+
+			$sql = mysqli_query($mysqli,$query_all)or die(mysqli_error($mysqli));
+
+			$j = $get_method['ads_param'];
+
+			$data_arr=array();
+
+			while($data0 = mysqli_fetch_assoc($sql))
+			{	
+				$data_arr[]=$data0;
+			}
+
+			$var_j=0;
+
+			for ($i=0; $i < count($data_arr); $i++){ 
+
+				if(NATIVE_ADS=='true'){
+					if($j % NATIVE_POSITION == 0){
+
+						if(NATIVE_ADS=='true'){
+
+							$row0['is_ads'] = true;
+							$row0['id'] = "";
+							$row0['video_type'] = "";
+							$row0['video_title'] = "";
+							$row0['video_url'] = "";
+							$row0['video_id'] = "";
+							$row0['video_thumbnail_b'] = "";
+							$row0['video_thumbnail_s'] = "";
+
+							$row0['is_fav']="";
+
+							$row0['native_ad_type'] = $settings_details['native_ad_type'];
+							$row0['native_ad_id'] = ($settings_details['native_ad_type']=='facebook') ? $settings_details['native_facebook_id'] : $settings_details['native_ad_id'];
+
+							$i--;
+						}
+					}	
+					else{
+
+						$row0['is_ads'] = false;
+						$row0['id'] = $data_arr[$i]['id'];
+						$row0['video_type'] = $data_arr[$i]['video_type'];
+						$row0['video_title'] = $data_arr[$i]['video_title'];
+						$row0['video_url'] = $data_arr[$i]['video_url'];
+						$row0['video_id'] = $data_arr[$i]['video_id'];
+
+						if($data_arr[$i]['video_type']=='server_url' or $data_arr[$i]['video_type']=='local')
+						{
+							$row0['video_thumbnail_b'] = $file_path.'images/'.$data_arr[$i]['video_thumbnail'];
+							$row0['video_thumbnail_s'] = get_thumb('images/'.$data_arr[$i]['video_thumbnail'],'650x350');
+						}
+						else
+						{
+							$row0['video_thumbnail_b'] = $data_arr[$i]['video_thumbnail'];
+							$row0['video_thumbnail_s'] = $data_arr[$i]['video_thumbnail'];
+						}
+
+						$row0['is_fav']=get_favourite_info($data_arr[$i]['id'],$user_id,'video');
+
+						$row0['native_ad_type'] = "";
+						$row0['native_ad_id'] = "";
+					}
+
+					$j++;
+				}
+
+				else{
+					$row0['is_ads'] = false;
+					$row0['id'] = $data_arr[$i]['id'];
+					$row0['video_type'] = $data_arr[$i]['video_type'];
+					$row0['video_title'] = $data_arr[$i]['video_title'];
+					$row0['video_url'] = $data_arr[$i]['video_url'];
+					$row0['video_id'] = $data_arr[$i]['video_id'];
+
+					if($data_arr[$i]['video_type']=='server_url' or $data_arr[$i]['video_type']=='local')
+					{
+						$row0['video_thumbnail_b'] = $file_path.'images/'.$data_arr[$i]['video_thumbnail'];
+						$row0['video_thumbnail_s'] = get_thumb('images/'.$data_arr[$i]['video_thumbnail'],'650x350');
+					}
+					else
+					{
+						$row0['video_thumbnail_b'] = $data_arr[$i]['video_thumbnail'];
+						$row0['video_thumbnail_s'] = $data_arr[$i]['video_thumbnail'];
+					}
+
+					$row0['is_fav']=get_favourite_info($data_arr[$i]['id'],$user_id,'video');
+
+					$row0['native_ad_type'] = "";
+					$row0['native_ad_id'] = "";
+
+				}
+
+				array_push($jsonObj,$row0);
+			}
+		}
+	}else{
+
+
+		$query_all="SELECT * FROM tbl_diets
+		LEFT JOIN tbl_favourite ON tbl_diets.`id`= tbl_favourite.`post_id` 
+		WHERE tbl_diets.`status`='1' AND tbl_favourite.`user_id`='$user_id' ORDER BY tbl_favourite.`fa_id` DESC LIMIT $limit, $page_limit";
+
+		$sql = mysqli_query($mysqli,$query_all)or die(mysqli_error($mysqli));
+
+		$j = $get_method['ads_param'];
+
+		$data_arr=array();
+
+		while($data = mysqli_fetch_assoc($sql))
+		{	
+			$data_arr[]=$data;
+		}
+
+		$var_j=0;
+
+		for ($i=0; $i < count($data_arr); $i++){ 
+
+			if(NATIVE_ADS=='true'){
+				if($j % NATIVE_POSITION == 0){
+
+					if(NATIVE_ADS=='true'){
+
+						$row['is_ads'] = true;
+						$row['id'] ="";
+						$row['diet_title'] = "";
+						$row['diet_image'] = "";
+						$row['diet_image_thumbnail'] ="";
+
+						$row['native_ad_type'] = $settings_details['native_ad_type'];
+						$row['native_ad_id'] = ($settings_details['native_ad_type']=='facebook') ? $settings_details['native_facebook_id'] : $settings_details['native_ad_id'];
+
+						$i--;
+					}
+				}	
+				else{
+
+					$row['is_ads'] = false;
+					$row['id'] = $data_arr[$i]['id'];
+					$row['diet_title'] = stripslashes($data_arr[$i]['diet_title']);
+					$row['diet_image'] = $file_path.'images/'.$data_arr[$i]['diet_image'];
+					$row['diet_image_thumbnail'] = get_thumb('images/'.$data_arr[$i]['diet_image'],'650x350');
+
+					$row['native_ad_type'] = "";
+					$row['native_ad_id'] = "";
+				}
+
+				$j++;
+			}
+
+			else{
+				$row['is_ads'] = false;
+				$row['id'] = $data_arr[$i]['id'];
+				$row['diet_title'] = stripslashes($data_arr[$i]['diet_title']);
+				$row['diet_image'] = $file_path.'images/'.$data_arr[$i]['diet_image'];
+				$row['diet_image_thumbnail'] = get_thumb('images/'.$data_arr[$i]['diet_image'],'650x350');
+
+				$row['native_ad_type'] = "";
+				$row['native_ad_id'] = "";
+
+			}
+
+			array_push($jsonObj,$row);
+
+		}
+	}
+	$set['status'] = '1';
+	$set['message'] = '';
+	$set['ads_param'] = strval($j);
+	$set['DIET_APP'] = $jsonObj;
+
+	header( 'Content-Type: application/json; charset=utf-8' );
+	echo $val= str_replace('\\/', '/', json_encode($set,JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+	die();
+}		
+else if($get_method['method_name']=="search_diet")
+{
+
+	$jsonObj= array();
+
+	$page_limit=API_PAGE_LIMIT;
+
+	$limit=($get_method['page']-1) * $page_limit;
+	
+	$search_text=addslashes(trim($get_method['search_text']));	
+
+	$query="SELECT * FROM tbl_diets
+	LEFT JOIN tbl_category ON tbl_diets.`cat_id`= tbl_category.`cid` 
+	WHERE tbl_category.`status`=1 AND tbl_diets.`status`=1 AND tbl_diets.`diet_title` LIKE '%$search_text%' ORDER BY tbl_diets.`diet_title` LIMIT $limit, $page_limit";
+
+	$sql = mysqli_query($mysqli,$query)or die(mysqli_error($mysqli));
+
+	$j = (isset($get_method['ads_param']))?$get_method['ads_param']:'';
+
+	$data_arr=array();
+	
+	while($data = mysqli_fetch_assoc($sql))
+	{	
+		$data_arr[]=$data;
+	}
+
+	$var_j=0;
+
+	for ($i=0; $i < count($data_arr); $i++){ 
+
+		if(NATIVE_ADS=='true'){
+			if($j % NATIVE_POSITION == 0){
+
+				if(NATIVE_ADS=='true'){
+
+					$row['is_ads'] = true;
+					$row['id'] = "";
+					$row['diet_title'] = "";
+					$row['diet_info'] = "";
+					$row['diet_image'] = "";
+					$row['diet_image_thumbnail'] = "";
+
+					$row['native_ad_type'] = $settings_details['native_ad_type'];
+					$row['native_ad_id'] = ($settings_details['native_ad_type']=='facebook') ? $settings_details['native_facebook_id'] : $settings_details['native_ad_id'];
+
+					$i--;
+				}
+			}	
+			else{
+
+				$row['is_ads'] = false;
+				$row['id'] = $data_arr[$i]['id'];
+				$row['diet_title'] = stripslashes($data_arr[$i]['diet_title']);
+				$row['diet_image'] = $file_path.'images/'.$data_arr[$i]['diet_image'];
+				$row['diet_image_thumbnail'] = get_thumb('images/'.$data_arr[$i]['diet_image'],'650x350');
+
+				$row['native_ad_type'] = "";
+				$row['native_ad_id'] ="";
+				
+			}
+
+			$j++;
+		}
+
+		else{
+			$row['is_ads'] = false;
+			$row['id'] = $data_arr[$i]['id'];
+			$row['diet_title'] = stripslashes($data_arr[$i]['diet_title']);
+			$row['diet_image'] = $file_path.'images/'.$data_arr[$i]['diet_image'];
+			$row['diet_image_thumbnail'] = get_thumb('images/'.$data_arr[$i]['diet_image'],'650x350');
+
+			$row['native_ad_type'] = "";
+			$row['native_ad_id'] = "";
+			
+
+		}
+		
+		array_push($jsonObj,$row);
+		
+	}
+
+	$set['status'] = '1';
+	$set['message'] = '';
+	$set['ads_param'] = strval($j);
+	$set['DIET_APP'] = $jsonObj;
+
+	header( 'Content-Type: application/json; charset=utf-8' );
+	echo $val= str_replace('\\/', '/', json_encode($set,JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+	die();
+}
+
+else if($get_method['method_name']=="video_list")
+{
+
+	$post_order_by=API_VIDEO_POST_ORDER;
+
+	$user_id=(isset($get_method['user_id']))?$get_method['user_id']:'';
+
+	$query_rec = "SELECT COUNT(*) as num FROM tbl_video
+	WHERE tbl_video.`status`= 1";
+	$total_pages = mysqli_fetch_array(mysqli_query($mysqli,$query_rec));
+
+	$page_limit=API_PAGE_LIMIT;
+	
+	$limit=($get_method['page']-1) * $page_limit;
+
+	$jsonObj= array();	
+
+	if(VIDEO_STATUS==1){
+
+		$query="SELECT * FROM tbl_video WHERE tbl_video.`status`=1 ORDER BY tbl_video.`id` ".$post_order_by." LIMIT $limit, $page_limit";
+
+		$sql = mysqli_query($mysqli,$query)or die(mysqli_error($mysqli));
+
+		$j = (isset($get_method['ads_param']))?$get_method['ads_param']:'';
+
+		$data_arr=array();
+
+		while($data = mysqli_fetch_assoc($sql))
+		{	
+			$data_arr[]=$data;
+		}
+
+		$var_j=0;
+
+		for ($i=0; $i < count($data_arr); $i++){ 
+
+			if(NATIVE_ADS=='true'){
+				if($j % NATIVE_POSITION == 0){
+
+					if(NATIVE_ADS=='true'){
+
+						$row['is_ads'] = true;
+						$row['id'] ="";
+						$row['video_type'] = "";
+						$row['video_title'] = "";
+						$row['video_url'] = "";
+						$row['video_id'] = "";
+						$row['video_thumbnail_b'] = "";
+						$row['video_thumbnail_s'] = "";
+						$row['is_fav']="";
+
+						$row['native_ad_type'] = $settings_details['native_ad_type'];
+						$row['native_ad_id'] = ($settings_details['native_ad_type']=='facebook') ? $settings_details['native_facebook_id'] : $settings_details['native_ad_id'];
+
+						$i--;
+					}
+				}	
+				else{
+
+					$row['is_ads'] = false;
+					$row['id'] = $data_arr[$i]['id'];
+					$row['video_type'] = $data_arr[$i]['video_type'];
+					$row['video_title'] = $data_arr[$i]['video_title'];
+					$row['video_url'] = $data_arr[$i]['video_url'];
+					$row['video_id'] = $data_arr[$i]['video_id'];
+
+					if($data_arr[$i]['video_type']=='server_url' or $data_arr[$i]['video_type']=='local')
+					{
+						$row['video_thumbnail_b'] = $file_path.'images/'.$data_arr[$i]['video_thumbnail'];
+						$row['video_thumbnail_s'] = get_thumb('images/'.$data_arr[$i]['video_thumbnail'],'650x350');
+					}
+					else
+					{
+						$row['video_thumbnail_b'] = $data_arr[$i]['video_thumbnail'];
+						$row['video_thumbnail_s'] = $data_arr[$i]['video_thumbnail'];
+					}
+
+					$row['is_fav']=get_favourite_info($data_arr[$i]['id'],$user_id,'video');
+
+					$row['native_ad_type'] = "";
+					$row['native_ad_id'] = "";
+
+				}
+
+				$j++;
+			}
+
+			else{
+				$row['is_ads'] = false;
+				$row['id'] = $data_arr[$i]['id'];
+				$row['video_type'] = $data_arr[$i]['video_type'];
+				$row['video_title'] = $data_arr[$i]['video_title'];
+				$row['video_url'] = $data_arr[$i]['video_url'];
+				$row['video_id'] = $data_arr[$i]['video_id'];
+
+				if($data_arr[$i]['video_type']=='server_url' or $data_arr[$i]['video_type']=='local')
+				{
+					$row['video_thumbnail_b'] = $file_path.'images/'.$data_arr[$i]['video_thumbnail'];
+					$row['video_thumbnail_s'] = get_thumb('images/'.$data_arr[$i]['video_thumbnail'],'650x350');
+				}
+				else
+				{
+					$row['video_thumbnail_b'] = $data_arr[$i]['video_thumbnail'];
+					$row['video_thumbnail_s'] = $data_arr[$i]['video_thumbnail'];
+				}
+
+				$row['is_fav']=get_favourite_info($data_arr[$i]['id'],$user_id,'video');
+
+				$row['native_ad_type'] = "";
+				$row['native_ad_id'] = "";
+
+			}
+
+			array_push($jsonObj,$row);
+
+		}
+	}
+	$set['status'] = '1';
+	$set['message'] = '';
+	$set['ads_param'] = strval($j);
+	$set['DIET_APP'] = $jsonObj;
+
+	header( 'Content-Type: application/json; charset=utf-8' );
+	echo $val= str_replace('\\/', '/', json_encode($set,JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+	die();
+}	
+else if($get_method['method_name']=="video_search")
+{
+
+	$search_text=addslashes(trim($get_method['search_text']));
+
+	$page_limit=API_PAGE_LIMIT;
+	
+	$limit=($get_method['page']-1) * $page_limit;
+
+	$jsonObj= array();	
+
+	$user_id=$get_method['user_id'];
+
+	if(VIDEO_STATUS==1){
+
+		$query="SELECT * FROM tbl_video
+		WHERE tbl_video.`status`=1 AND tbl_video.`video_title` LIKE '%$search_text%' ORDER BY tbl_video.`video_title` LIMIT $limit, $page_limit";
+
+		$sql = mysqli_query($mysqli,$query)or die(mysqli_error($mysqli));
+
+		$j = $get_method['ads_param'];
+
+		$data_arr=array();
+
+		while($data = mysqli_fetch_assoc($sql))
+		{	
+			$data_arr[]=$data;
+		}
+
+		$var_j=0;
+
+		for ($i=0; $i < count($data_arr); $i++){ 
+
+			if(NATIVE_ADS=='true'){
+				if($j % NATIVE_POSITION == 0){
+
+					if(NATIVE_ADS=='true'){
+
+						$row['is_ads'] = true;
+						$row['id'] ="";
+						$row['video_type'] = "";
+						$row['video_title'] = "";
+						$row['video_url'] = "";
+						$row['video_id'] = "";
+						$row['video_thumbnail_b'] = "";
+						$row['video_thumbnail_s'] = "";
+						$row['is_fav']="";
+
+						$row['native_ad_type'] = $settings_details['native_ad_type'];
+						$row['native_ad_id'] = ($settings_details['native_ad_type']=='facebook') ? $settings_details['native_facebook_id'] : $settings_details['native_ad_id'];
+
+						$i--;
+					}
+				}	
+				else{
+
+					$row['is_ads'] = false;
+					$row['id'] = $data_arr[$i]['id'];
+					$row['video_type'] = $data_arr[$i]['video_type'];
+					$row['video_title'] = $data_arr[$i]['video_title'];
+					$row['video_url'] = $data_arr[$i]['video_url'];
+					$row['video_id'] = $data_arr[$i]['video_id'];
+
+					if($data_arr[$i]['video_type']=='server_url' or $data_arr[$i]['video_type']=='local')
+					{
+						$row['video_thumbnail_b'] = $file_path.'images/'.$data_arr[$i]['video_thumbnail'];
+						$row['video_thumbnail_s'] = get_thumb('images/'.$data_arr[$i]['video_thumbnail'],'650x350');
+					}
+					else
+					{
+						$row['video_thumbnail_b'] = $data_arr[$i]['video_thumbnail'];
+						$row['video_thumbnail_s'] = $data_arr[$i]['video_thumbnail'];
+					}
+
+					$row['is_fav']=get_favourite_info($data_arr[$i]['id'],$user_id,'video');
+
+					$row['native_ad_type'] = "";
+					$row['native_ad_id'] = "";
+
+				}
+
+				$j++;
+			}
+
+			else{
+				$row['is_ads'] = false;
+				$row['id'] = $data_arr[$i]['id'];
+				$row['video_type'] = $data_arr[$i]['video_type'];
+				$row['video_title'] = $data_arr[$i]['video_title'];
+				$row['video_url'] = $data_arr[$i]['video_url'];
+				$row['video_id'] = $data_arr[$i]['video_id'];
+
+				if($data_arr[$i]['video_type']=='server_url' or $data_arr[$i]['video_type']=='local')
+				{
+					$row['video_thumbnail_b'] = $file_path.'images/'.$data_arr[$i]['video_thumbnail'];
+					$row['video_thumbnail_s'] = get_thumb('images/'.$data_arr[$i]['video_thumbnail'],'650x350');
+				}
+				else
+				{
+					$row['video_thumbnail_b'] = $data_arr[$i]['video_thumbnail'];
+					$row['video_thumbnail_s'] = $data_arr[$i]['video_thumbnail'];
+				}
+
+				$row['is_fav']=get_favourite_info($data_arr[$i]['id'],$user_id,'video');
+				$row['native_ad_type'] = "";
+				$row['native_ad_id'] = "";
+
+			}
+
+			array_push($jsonObj,$row);
+
+		}
+	}	
+	$set['status'] = '1';
+	$set['message'] = '';
+	$set['ads_param'] = strval($j);
+	$set['DIET_APP'] = $jsonObj;
+
+	header( 'Content-Type: application/json; charset=utf-8' );
+	echo $val= str_replace('\\/', '/', json_encode($set,JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+	die();
+}
+
+else if($get_method['method_name']=="user_register")
+{
+
+	$user_type=trim($get_method['type']); //Google, Normal, Facebook
+	$device_id=trim($get_method['device_id']); //Google, Normal, Facebook
+	$email=cleanInput($get_method['email']);
+	$auth_id=(isset($get_method['auth_id']))?cleanInput($get_method['auth_id']):'';
+
+	$created_at=strtotime(date('d-m-Y h:i A'));
+
+	$to = $get_method['email'];
+	$recipient_name=$get_method['name'];
+	// subject
+	$subject = '[IMPORTANT] '.APP_NAME.  'Registration completed';
+
+	if($user_type=='Google' || $user_type=='google'){
+
+		$qry = "SELECT * FROM tbl_users WHERE (`email` = '$email' OR `auth_id`='$auth_id') AND `user_type`='Google'";
+		$result = mysqli_query($mysqli,$qry) or die(mysqli_error($mysqli));
+		$num_rows = mysqli_num_rows($result);
+		$row = mysqli_fetch_assoc($result);
+
+		if($num_rows == 0){
+
+			$is_duplicate='';
+
+			$sql_device="SELECT * FROM tbl_users WHERE `device_id` = '".$device_id."'";
+			$res_device=mysqli_query($mysqli,$sql_device);
+			if(mysqli_num_rows($res_device) > 0){
+				$is_duplicate='1';
+			}else{
+				$is_duplicate='0';
+			}
+
+			$data = array(
+				'user_type' => 'Google',
+				'name'  => cleanInput($get_method['name']),				    
+				'email'  =>  cleanInput($get_method['email']),
+				'auth_id' => $auth_id,
+				'is_duplicate' => $is_duplicate,
+				'device_id' => $device_id,
+				'created_at' => $created_at,
+				'status'  =>  '1'
+			);		
+
+			$qry = Insert('tbl_users',$data);	
+
+			$user_id=mysqli_insert_id($mysqli);
+
+			$sql="SELECT * FROM tbl_active_log WHERE `user_id`='$user_id'";
+			$res=mysqli_query($mysqli, $sql);
+
+			if(mysqli_num_rows($res) == 0){
+                // insert active log
+
+				$data_log = array(
+					'user_id'  =>  $user_id,
+					'date_time'  =>  strtotime(date('d-m-Y h:i:s A'))
+				);
+
+				$qry = Insert('tbl_active_log',$data_log);
+
+			}
+			else{
+
+                // update active log
+				$data_log = array(
+					'date_time'  =>  strtotime(date('d-m-Y h:i:s A'))
+				);
+
+				$update=Update('tbl_active_log', $data_log, "WHERE tbl_active_log.`user_id` = '$user_id'");  
+			}
+
+			$message='<div style="background-color: #eee;" align="center"><br />
+			<table style="font-family: OpenSans,sans-serif; color: #666666;" border="0" width="600" cellspacing="0" cellpadding="0" align="center" bgcolor="#FFFFFF">
+			<tbody>
+			<tr>
+			<td colspan="2" bgcolor="#FFFFFF" align="center" ><img src="'.$file_path.'images/'.APP_LOGO.'" alt="logo" style="width:100px;height:auto"/></td>
+			</tr>
+			<br>
+			<br>
+			<tr>
+			<td colspan="2" bgcolor="#FFFFFF" align="center" style="padding-top:25px;">
+			<img src="'.$file_path.'assets/images/thankyoudribble.gif" alt="header" auto-height="100" width="50%"/>
+			</td>
+			</tr>
+			<tr>
+			<td width="600" valign="top" bgcolor="#FFFFFF">
+			<table style="font-family:OpenSans,sans-serif; color: #666666; font-size: 10px; padding: 15px;" border="0" width="100%" cellspacing="0" cellpadding="0" align="left">
+			<tbody>
+			<tr>
+			<td valign="top">
+			<table border="0" align="left" cellpadding="0" cellspacing="0" style="font-family:OpenSans,sans-serif; color: #666666; font-size: 10px; width:100%;">
+			<tbody>
+			<tr>
+			<td>
+			<p style="color: #717171; font-size: 24px; margin-top:0px; margin:0 auto; text-align:center;"><strong>'.$app_lang['welcome_lbl'].', '.addslashes(trim($get_method['name'])).'</strong></p>
+			<br>
+			<p style="color:#15791c; font-size:18px; line-height:32px;font-weight:500;margin-bottom:30px; margin:0 auto; text-align:center;">'.$app_lang['google_register_msg'].'<br /></p>
+			<br/>
+			<p style="color:#999; font-size:17px; line-height:32px;font-weight:500;">'.$app_lang['thank_you_lbl'].' '.APP_NAME.'</p>
+			</td>
+			</tr>
+			</tbody>
+			</table>
+			</td>
+			</tr>
+			</tbody>
+			</table>
+			</td>
+			</tr>
+			<tr>
+			<td style="color: #262626; padding: 20px 0; font-size: 18px; border-top:5px solid #52bfd3;" colspan="2" align="center" bgcolor="#ffffff">'.$app_lang['email_copyright'].' '.APP_NAME.'.</td>
+			</tr>
+			</tbody>
+			</table>
+			</div>';
+
+			send_email($to,$recipient_name,$subject,$message);
+
+			if($row['user_image'] !=''){
+
+				$user_image = $file_path.'images/'.$row['user_image'];
+
+			}else{
+
+				$user_image = '';
+			}
+
+			$set=array('status' => '1','message' => '','user_id' => $user_id,'name'=>$get_method['name'],'email'=>$get_method['email'],'user_image' => $user_image,'msg' => $app_lang['register_success'],'success'=>'1');
+
+		}else{	
+
+			if($row['status']==0)
+			{
+				$set=array('status' => '1','message' => '','msg' =>$app_lang['account_blocked'],'success'=>'0');
+			}	
+
+			else
+			{  
+				$set=array('status' => '1','message' => '','user_id' => $row['id'],'name'=>$row['name'],'email'=>$row['email'],'msg' => $app_lang['login_success'],'success'=>'1');
+			}
+		}
+
+	}
+	else if($user_type=='Normal' || $user_type=='normal')
+	{			
+
+		$qry = "SELECT * FROM tbl_users WHERE tbl_users.`email` = '".$get_method['email']."' AND tbl_users.`user_type`='Normal'";
+		$result = mysqli_query($mysqli,$qry);
+		$num_rows = mysqli_num_rows($result);
+		$row = mysqli_fetch_assoc($result);
+		
+		if($num_rows == 0){
+
+			$is_duplicate='';
+
+			$sql_device="SELECT * FROM tbl_users WHERE tbl_users.`device_id` = '".$device_id."'";
+			$res_device=mysqli_query($mysqli,$sql_device);
+			if(mysqli_num_rows($res_device) > 0){
+				$is_duplicate='1';
+			}else{
+				$is_duplicate='0';
+			}
+
+			$data = array(
+				'user_type' => 'Normal',
+				'name'  => cleanInput($get_method['name']),				    
+				'email'  =>  cleanInput($get_method['email']),
+				'password'  =>  md5(trim($get_method['password'])),
+				'phone'  =>  cleanInput($get_method['phone']),
+				'device_id'  =>  $device_id,
+				'is_duplicate' => $is_duplicate,
+				'auth_id' => $auth_id,
+				'created_at' => $created_at,
+				'status'  =>  '1'
+			);	
+
+			$qry = Insert('tbl_users',$data);	
+
+			$user_id=mysqli_insert_id($mysqli);
+
+			$message='<div style="background-color: #eee;" align="center"><br />
+			<table style="font-family: OpenSans,sans-serif; color: #666666;" border="0" width="600" cellspacing="0" cellpadding="0" align="center" bgcolor="#FFFFFF">
+			<tbody>
+			<tr>
+			<td colspan="2" bgcolor="#FFFFFF" align="center" ><img src="'.$file_path.'images/'.APP_LOGO.'" alt="logo" style="width:100px;height:auto"/></td>
+			</tr>
+			<br>
+			<br>
+			<tr>
+			<td colspan="2" bgcolor="#FFFFFF" align="center" style="padding-top:25px;">
+			<img src="'.$file_path.'assets/images/thankyoudribble.gif" alt="header" auto-height="100" width="50%"/>
+			</td>
+			</tr>
+			<tr>
+			<td width="600" valign="top" bgcolor="#FFFFFF">
+			<table style="font-family:OpenSans,sans-serif; color: #666666; font-size: 10px; padding: 15px;" border="0" width="100%" cellspacing="0" cellpadding="0" align="left">
+			<tbody>
+			<tr>
+			<td valign="top">
+			<table border="0" align="left" cellpadding="0" cellspacing="0" style="font-family:OpenSans,sans-serif; color: #666666; font-size: 10px; width:100%;">
+			<tbody>
+			<tr>
+			<td>
+			<p style="color: #717171; font-size: 24px; margin-top:0px; margin:0 auto; text-align:center;"><strong>'.$app_lang['welcome_lbl'].', '.addslashes(trim($get_method['name'])).'</strong></p>
+			<br>
+			<p style="color:#15791c; font-size:18px; line-height:32px;font-weight:500;margin-bottom:30px; margin:0 auto; text-align:center;">'.$app_lang['normal_register_msg'].'<br /></p>
+			<br/>
+			<p style="color:#999; font-size:17px; line-height:32px;font-weight:500;">'.$app_lang['thank_you_lbl'].' '.APP_NAME.'</p>
+			</td>
+			</tr>
+			</tbody>
+			</table>
+			</td>
+			</tr>
+			</tbody>
+			</table>
+			</td>
+			</tr>
+			<tr>
+			<td style="color: #262626; padding: 20px 0; font-size: 18px; border-top:5px solid #52bfd3;" colspan="2" align="center" bgcolor="#ffffff">'.$app_lang['email_copyright'].' '.APP_NAME.'.</td>
+			</tr>
+			</tbody>
+			</table>
+			</div>';
+
+			send_email($to,$recipient_name,$subject,$message);
+
+			$set=array('status' => '1','message' => '','user_id' => $user_id,'name'=>$get_method['name'],'email'=>$get_method['email'],'phone'=>$get_method['phone'],'auth_id' => $auth_id,'msg' => $app_lang['register_success'],'success'=>'1');
+		}else{
+
+			if($row['status']==0)
+			{
+				$set=array('status' => '1','message' => '','msg' =>$app_lang['account_blocked'],'success'=>'0');
+			}	
+			else
+			{  
+
+				$set=array('status' => '1','message' => '','user_id' => $row['id'],'name'=>$row['name'],'email'=>$row['email'],'phone'=>$get_method['phone'],'auth_id' => $auth_id,'msg' => $app_lang['register_success'],'success'=>'1');
+			}
+		}
+
+	}
+	
+	else if($user_type=='Facebook' || $user_type=='facebook'){			
+
+		$qry = "SELECT * FROM tbl_users WHERE  (`email` = '$email' AND `auth_id`='$auth_id') AND `user_type`='Facebook'";
+		$result = mysqli_query($mysqli,$qry);
+		$num_rows = mysqli_num_rows($result);
+		$row = mysqli_fetch_assoc($result);
+		
+		if($num_rows == 0){
+
+			$is_duplicate='';
+
+			$sql_device="SELECT * FROM tbl_users WHERE `device_id` = '".$device_id."'";
+			$res_device=mysqli_query($mysqli,$sql_device);
+			if(mysqli_num_rows($res_device) > 0){
+				$is_duplicate='1';
+			}else{
+				$is_duplicate='0';
+			}
+
+			$data = array(
+
+				'user_type' => 'Facebook',
+				'name'  => cleanInput($get_method['name']),				    
+				'email'  =>  cleanInput($get_method['email']),
+				'phone'  => $get_method['phone'],
+				'device_id'  =>  $device_id,
+				'is_duplicate' => $is_duplicate,
+				'auth_id' => $auth_id,
+				'created_at' => $created_at,
+				'status'  =>  '1'
+			);		
+
+			$qry = Insert('tbl_users',$data);	
+
+			$user_id=mysqli_insert_id($mysqli);
+
+			$sql="SELECT * FROM tbl_active_log WHERE `user_id`='$user_id'";
+			$res=mysqli_query($mysqli, $sql);
+
+			if(mysqli_num_rows($res) == 0){
+                // insert active log
+
+				$data_log = array(
+					'user_id'  =>  $user_id,
+					'date_time'  =>  strtotime(date('d-m-Y h:i:s A'))
+				);
+
+				$qry = Insert('tbl_active_log',$data_log);
+
+			}
+			else{
+                // update active log
+				$data_log = array(
+					'date_time'  =>  strtotime(date('d-m-Y h:i:s A'))
+				);
+
+				$update=Update('tbl_active_log', $data_log, "WHERE user_id = '$user_id'");  
+			}
+
+			$message='<div style="background-color: #eee;" align="center"><br />
+			<table style="font-family: OpenSans,sans-serif; color: #666666;" border="0" width="600" cellspacing="0" cellpadding="0" align="center" bgcolor="#FFFFFF">
+			<tbody>
+			<tr>
+			<td colspan="2" bgcolor="#FFFFFF" align="center" ><img src="'.$file_path.'images/'.APP_LOGO.'" alt="logo" style="width:100px;height:auto"/></td>
+			</tr>
+			<br>
+			<br>
+			<tr>
+			<td colspan="2" bgcolor="#FFFFFF" align="center" style="padding-top:25px;">
+			<img src="'.$file_path.'assets/images/thankyoudribble.gif" alt="header" auto-height="100" width="50%"/>
+			</td>
+			</tr>
+			<tr>
+			<td width="600" valign="top" bgcolor="#FFFFFF">
+			<table style="font-family:OpenSans,sans-serif; color: #666666; font-size: 10px; padding: 15px;" border="0" width="100%" cellspacing="0" cellpadding="0" align="left">
+			<tbody>
+			<tr>
+			<td valign="top">
+			<table border="0" align="left" cellpadding="0" cellspacing="0" style="font-family:OpenSans,sans-serif; color: #666666; font-size: 10px; width:100%;">
+			<tbody>
+			<tr>
+			<td>
+			<p style="color: #717171; font-size: 24px; margin-top:0px; margin:0 auto; text-align:center;"><strong>'.$app_lang['welcome_lbl'].', '.addslashes(trim($get_method['name'])).'</strong></p>
+			<br>
+			<p style="color:#15791c; font-size:18px; line-height:32px;font-weight:500;margin-bottom:30px; margin:0 auto; text-align:center;">'.$app_lang['facebook_register_msg'].'<br /></p>
+			<br/>
+			<p style="color:#999; font-size:17px; line-height:32px;font-weight:500;">'.$app_lang['thank_you_lbl'].' '.APP_NAME.'</p>
+			</td>
+			</tr>
+			</tbody>
+			</table>
+			</td>
+			</tr>
+			</tbody>
+			</table>
+			</td>
+			</tr>
+			<tr>
+			<td style="color: #262626; padding: 20px 0; font-size: 18px; border-top:5px solid #52bfd3;" colspan="2" align="center" bgcolor="#ffffff">'.$app_lang['email_copyright'].' '.APP_NAME.'.</td>
+			</tr>
+			</tbody>
+			</table>
+			</div>';
+
+			send_email($to,$recipient_name,$subject,$message);
+
+			if($row['user_image'] !=''){
+
+				$user_image = $file_path.'images/'.$row['user_image'];
+
+			}else{
+
+				$user_image = '';
+			}
+
+
+			$set=array('status' => '1','message' => '','user_id' => $user_id,'name'=>$get_method['name'],'email'=>$get_method['email'],'user_image' => $user_image,'msg' => $app_lang['register_success'],'success'=>'1');
+		}
+		else{
+
+			if($row['status']==0)
+			{
+				$set=array('status' => '1','message' => '','msg' =>$app_lang['account_blocked'],'success'=>'0');
+			}
+
+			else
+			{  
+				$set=array('status' => '1','message' => '','user_id' => $row['id'],'name'=>$row['name'],'email'=>$row['email'],'msg' => $app_lang['login_success'],'success'=>'1');
+			}
+		}
+	}
+
+	header( 'Content-Type: application/json; charset=utf-8' );
+	echo $val= str_replace('\\/', '/', json_encode($set,JSON_UNESCAPED_UNICODE));
+	die();
+}
+else if($get_method['method_name']=="user_login")
+{
+
+	$email = cleanInput($get_method['email']);
+	$password = trim($get_method['password']);
+
+	$sql_user="SELECT * FROM tbl_users WHERE tbl_users.`email`='$email' AND `user_type` = 'Normal'";
+	$res_user=mysqli_query($mysqli, $sql_user) or die('Error in fetch data ->'.mysqli_error($mysqli));
+
+	if(mysqli_num_rows($res_user) > 0){
+		$row=mysqli_fetch_assoc($res_user);
+
+		if($row['status']==1){
+
+			if($row['password']==md5($password)){
+
+				$user_id=$row['id'];
+
+				$sql="SELECT * FROM tbl_active_log WHERE tbl_active_log.`user_id`='$user_id'";
+				$res=mysqli_query($mysqli, $sql);
+
+				if(mysqli_num_rows($res) == 0){
+                    // insert active log
+
+					$data_log = array(
+						'user_id'  =>  $user_id,
+						'date_time'  =>  strtotime(date('d-m-Y h:i:s A'))
+					);
+
+					$qry = Insert('tbl_active_log',$data_log);
+
+				}
+				else{
+                    // update active log
+					$data_log = array(
+						'date_time'  =>  strtotime(date('d-m-Y h:i:s A'))
+					);
+
+					$update=Update('tbl_active_log', $data_log, "WHERE tbl_active_log.`user_id` = '$user_id'");  
+				}
+
+				mysqli_free_result($res);
+
+				$set=array('status' => '1','message' => '','user_id' => $row['id'],'name'=>$row['name'],'success'=>'1');
+
+
+			}
+			else{
+				// invalid password
+				$set=array('status' => '1','message' => '','msg' =>$app_lang['invalid_password'],'success'=>'0');
+			}
+		}
+		else{
+			// account is deactivated
+			$set=array('status' => '1','message' => '','msg' =>$app_lang['account_deactive'],'success'=>'0');
+		}
+
+	}
+	else{
+		// email not found
+		$set=array('status' => '1','message' => '','msg' =>$app_lang['email_not_found'],'success'=>'0');
+	}
+
+	header( 'Content-Type: application/json; charset=utf-8' );
+	echo $val= str_replace('\\/', '/', json_encode($set,JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+	die();
+
+}
+
+else if($get_method['method_name']=="user_profile")
+{
+	
+	$qry = "SELECT * FROM tbl_users WHERE  tbl_users.`status`=1 AND tbl_users.`id` = '".$get_method['user_id']."'"; 
+	$result = mysqli_query($mysqli,$qry);
+	$row = mysqli_fetch_assoc($result);
+	if(mysqli_num_rows($result) > 0){
+		
+		if($row['user_image']!='')
+		{
+			$user_image=$file_path.'images/'.$row['user_image'];
+		}	
+		else
+		{
+			$user_image='';
+		}
+
+		$set=array('status' => '1','message' => '','user_id' => $row['id'],'name'=>$row['name'],'email'=>$row['email'],'phone'=>$row['phone'],'user_image'=>$user_image,'msg' => '','success'=>'1');
+	}
+	else{
+		$set=array('status' => '2','message' => '','msg'=>$app_lang['account_disable'],'success'=>'0');
+	}
+
+	header( 'Content-Type: application/json; charset=utf-8' );
+	echo $val= str_replace('\\/', '/', json_encode($set,JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+	die();
+
+}
+else if($get_method['method_name']=="user_profile_update")
+{
+
+	$user_id=$get_method['user_id'];
+	$is_remove=$get_method['is_remove'];
+
+	$qry = "SELECT * FROM tbl_users WHERE tbl_users.`id`='$user_id'"; 
+	$result = mysqli_query($mysqli,$qry);
+	$row = mysqli_fetch_assoc($result);
+
+	if(isset($is_remove) && $is_remove){
+		if($row['user_image']!=""){
+			if (file_exists('images/' .$row['user_image'])){
+				unlink('images/'.$row['user_image']);
+			} 
+
+			$sql="UPDATE tbl_users SET `user_image`='' WHERE `id`='".$row['id']."'";
+			mysqli_query($mysqli,$sql);
+		}
+		$user_image ='';
+	}
+
+	if(isset($_FILES['user_image']))
+	{
+		if($row['user_image']!="")
+		{
+			unlink('images/'.$row['user_image']);
+		}
+
+		$ext = pathinfo($_FILES['user_image']['name'], PATHINFO_EXTENSION);
+
+		$path = "images/";
+		$user_image=date('dmYhis').'_'.rand(0,99999).".".$ext;
+
+		$tpath1=$path.$user_image;        
+		$pic1=compress_image($_FILES["user_image"]["tmp_name"], $tpath1, 80);
+
+		$data = array(
+			'name'  => cleanInput($get_method['name']),
+			'phone'  =>  cleanInput($get_method['phone']),
+			'user_image'  =>  $user_image 
+		);
+
+	}else{
+
+		$data = array(
+			'name'  => cleanInput($get_method['name']),
+			'phone'  =>  cleanInput($get_method['phone'])
+		);
+	}
+
+	$user_edit=Update('tbl_users', $data, "WHERE `id`= '".$get_method['user_id']."'");
+
+	$set=array('status' => '1','message' => '','msg'=>$app_lang['update_success'],'success'=>'1');		 		    
+	header( 'Content-Type: application/json; charset=utf-8' );
+	echo $val= str_replace('\\/', '/', json_encode($set,JSON_UNESCAPED_UNICODE));
+	die();
+
+}
+else if($get_method['method_name']=="user_status")
+{
+
+	$user_id = $get_method['user_id'];
+
+	$qry = "SELECT * FROM tbl_users WHERE  tbl_users.`id` = '".$user_id."'"; 
+	$result = mysqli_query($mysqli,$qry);
+	$num_rows = mysqli_num_rows($result);
+	$row = mysqli_fetch_assoc($result);
+
+	if($num_rows > 0){ 	 
+		if($row['status']==1){
+			$set=array('status' => '1','message' => '','msg' => '','success'=>'1');	 
+		}else{
+			$set=array('status' => '1','message' => '','msg' => '','success'=>'0');
+		}
+	}else{
+		$set=array('status' => '1','message' => '','msg' => '','success'=>'0');
+	}
+
+	header( 'Content-Type: application/json; charset=utf-8' );
+	echo $val= str_replace('\\/', '/', json_encode($set,JSON_UNESCAPED_UNICODE));
+	die();
+
+}
+else if($get_method['method_name']=="user_forgot_pass")	
+{
+
+	$email=trim($get_method['email']);
+
+	$qry = "SELECT * FROM tbl_users WHERE tbl_users.`email` = '$email' AND tbl_users.`user_type`='Normal'"; 
+	$result = mysqli_query($mysqli,$qry);
+	$row = mysqli_fetch_assoc($result);
+
+	if($result->num_rows > 0)
+	{
+		$password=generateRandomPassword(7);
+
+		$new_password=md5($password);
+
+		$to = $row['email'];
+		$recipient_name=$row['name'];
+
+		$subject = str_replace('###', APP_NAME, $app_lang['forgot_password_sub_lbl']);
+
+		$message='<div style="background-color: #f9f9f9;" align="center"><br />
+		<table style="font-family: OpenSans,sans-serif; color: #666666;" border="0" width="600" cellspacing="0" cellpadding="0" align="center" bgcolor="#FFFFFF">
+		<tbody>
+		<tr>
+		<td colspan="2" bgcolor="#FFFFFF" align="center"><img src="'.$file_path.'images/'.APP_LOGO.'" alt="header" style="width:100px;height:auto"/></td>
+		</tr>
+		<tr>
+		<td width="600" valign="top" bgcolor="#FFFFFF"><br>
+		<table style="font-family:OpenSans,sans-serif; color: #666666; font-size: 10px; padding: 15px;" border="0" width="100%" cellspacing="0" cellpadding="0" align="left">
+		<tbody>
+		<tr>
+		<td valign="top"><table border="0" align="left" cellpadding="0" cellspacing="0" style="font-family:OpenSans,sans-serif; color: #666666; font-size: 10px; width:100%;">
+		<tbody>
+		<tr>
+		<td>
+		<p style="color: #262626; font-size: 24px; margin-top:0px;"><strong>'.$app_lang['dear_lbl'].' '.$row['name'].'</strong></p>
+		<p style="color:#262626; font-size:20px; line-height:32px;font-weight:500;margin-top:5px;"><br>'.$app_lang['your_password_lbl'].': <span style="font-weight:400;">'.$password.'</span></p>
+		<p style="color:#262626; font-size:17px; line-height:32px;font-weight:500;margin-bottom:30px;">'.$app_lang['thank_you_lbl'].' '.APP_NAME.'</p>
+
+		</td>
+		</tr>
+		</tbody>
+		</table></td>
+		</tr>
+
+		</tbody>
+		</table></td>
+		</tr>
+		<tr>
+		<td style="color: #262626; padding: 20px 0; font-size: 18px; border-top:5px solid #52bfd3;" colspan="2" align="center" bgcolor="#ffffff">'.$app_lang['email_copyright'].' '.APP_NAME.'.</td>
+		</tr>
+		</tbody>
+		</table>
+		</div>';
+
+		send_email($to,$recipient_name,$subject,$message);
+
+		$sql="UPDATE tbl_users SET `password`='$new_password' WHERE `id`='".$row['id']."'";
+		mysqli_query($mysqli,$sql);
+
+		$set=array('status' => '1','message' => '','msg' => $app_lang['password_sent_mail'],'success'=>'1');
+	}
+	else
+	{  	 	
+		$set=array('status' => '1','message' => '','msg' => $app_lang['email_not_found'],'success'=>'0');		
+	}
+
+	header( 'Content-Type: application/json; charset=utf-8' );
+	echo $val= str_replace('\\/', '/', json_encode($set,JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+	die();	
+}
+
+else if($get_method['method_name']=="change_password")		
+{
+	$user_id=$get_method['user_id'];
+	$old_password=$get_method['old_password'];
+	$new_password=$get_method['new_password'];
+
+	$qry = "SELECT * FROM tbl_users WHERE `id`='$user_id' AND `status` = 1"; 
+	$result = mysqli_query($mysqli,$qry);
+	$num_rows = mysqli_num_rows($result);
+	$row = mysqli_fetch_assoc($result);
+
+	if ($row['password'] == md5($old_password)) {
+
+		$data = array(
+			'password' => md5($new_password)
+		);
+
+		$edit=Update('tbl_users', $data, "WHERE `id` = '$user_id'");
+
+		$set=array('status' => '1','message' => '','msg' => $app_lang['change_password_msg'],'success' => '1');	 
+	}
+	else{
+		$set=array('status' => '1','message' => '','msg' =>$app_lang['wrong_password_error'],'success' => '0');
+	}
+
+	header( 'Content-Type: application/json; charset=utf-8' );
+	echo $val= str_replace('\\/', '/', json_encode($set,JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+	die();
+
+}
+else if($get_method['method_name']=="get_contact")		
+{
+
+	$jsonObj= array();	
+
+	$user_id=cleanInput($get_method['user_id']);
+
+	$query="SELECT * FROM tbl_contact_sub WHERE tbl_contact_sub.`status`=1 ORDER BY tbl_contact_sub.`id` DESC";
+	$sql = mysqli_query($mysqli,$query);
+
+	if(mysqli_num_rows($sql) > 0){
+		while ($data = mysqli_fetch_assoc($sql)){
+			$info['id']=$data['id'];
+			$info['subject']=$data['title'];
+
+			array_push($jsonObj, $info);
+		}
+	}
+
+	$set['status'] = '1';
+	$set['message'] = '';
+	$set['name']=get_user_info($user_id,'name');
+	$set['email']=get_user_info($user_id,'email');
+	$set['DIET_APP'] = $jsonObj;
+
+	header( 'Content-Type: application/json; charset=utf-8' );
+	echo $val= str_replace('\\/', '/', json_encode($set,JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+	die();	
+}
+else if($get_method['method_name']=="user_contact_us")	
+{	
+
+	$contact_name = cleanInput($get_method['contact_name']);
+	$contact_email = cleanInput($get_method['contact_email']);
+	$contact_subject = cleanInput($get_method['contact_subject']);
+	$contact_msg = cleanInput($get_method['contact_msg']);
+
+	$data = array(
+		'contact_name'  => $contact_name,
+		'contact_email'  => $contact_email,
+		'contact_subject'  =>  $contact_subject,
+		'contact_msg'  =>  $contact_msg,
+		'created_at'  =>  strtotime(date('d-m-Y h:i:s A'))
+	);	
+
+	$qry = Insert('tbl_contact_list',$data);
+
+	$to = $settings_details['app_email'];
+	$recipient_name=APP_NAME;
+	
+	$subject = '[IMPORTANT] '.APP_NAME.' Contact';
+
+	$message='<div style="background-color:#f9f9f9;" align="center"><br>
+	<table style="font-family:Poppins,sans-serif;color:#666666;border-radius:10px;overflow:hidden;" border="0" width="90%" cellspacing="0" cellpadding="0" align="center" bgcolor="#FFFFFF">
+	<tbody>
+	<tr>
+	<td colspan="2" bgcolor="#FFFFFF" align="center" style="border-bottom:1px solid rgba(0, 0, 0, 0.05)"><img src="'.$file_path.'images/'.APP_LOGO.'" alt="header" width="100" style="margin-top:15px;padding-bottom:15px;" /></td>
+	</tr>
+	<tr>
+	<td width="50%" valign="top" bgcolor="#FFFFFF">
+	<table style="font-family:Poppins,sans-serif;" border="0" width="100%" cellspacing="0" cellpadding="0" align="left">
+	<tbody>
+	<tr>
+	<td valign="top" style="width: 100%;display: inline-block;padding:25px 25px 15px 25px;">
+	<table border="0" align="left" cellpadding="0" cellspacing="0" style="font-family:Poppins,sans-serif; color: #666666; font-size: 10px; width:100%;">
+	<tbody>
+	<tr>
+	<span style="color:#262626;font-size:20px;line-height:28px;font-weight:600;display:inline-block;margin-bottom:10px;">Hello '.$contact_name.',</span><br>
+	<span style="color:#262626;font-size:16px;line-height:26px;font-weight:600;display:inline-block">Name: <p style="color:#727272;font-size:16px;line-height:26px;font-weight:400;margin:5px 0 8px 0;display:inline-block;">'.$contact_name.'</p></span><br>
+	<span style="color:#262626;font-size:16px;line-height:26px;font-weight:600;display:inline-block">Email: <p style="color:#727272;font-size:16px;line-height:26px;font-weight:400;margin:5px 0 8px 0;display:inline-block;">'.$contact_email.'</p></span><br>
+	<span style="color:#262626;font-size:16px;line-height:26px;font-weight:600;display:inline-block">Subject: <p style="color:#727272;font-size:16px;line-height:26px;font-weight:400;margin:5px 0 8px 0;display:inline-block;">'.get_subject_info($contact_subject,'title').'</p></span><br>
+	<span style="color:#262626;font-size:16px;line-height:26px;font-weight:600;display:inline-block">Message: <p style="color:#727272;font-size:16px;line-height:26px;font-weight:400;margin:5px 0 8px 0;display:inline-block;">'.$contact_msg.'</p></span><br>
+	<span style="color:#262626;font-size:16px;line-height:26px;font-weight:600;display:inline-block;margin-top:25px">Thank You, <p style="color:#262626;font-size:16px;line-height:26px;font-weight:500;margin:5px 0 8px 0;display:block;">'.APP_NAME.'</p></span>						  
+	</tr>
+	</tbody>
+	</table>
+	</td>
+	<td valign="top" style="width:100%;display:inline-block;border-top:1px solid rgba(0, 0, 0, 0.05);text-align:center;padding:10px 0;">
+	<table border="0" align="left" cellpadding="0" cellspacing="0" style="font-family:Poppins,sans-serif; color: #666666; font-size: 10px; width:100%;">
+	<tbody>
+	<span><a href="https://www.facebook.com/viaviweb"><img src="'.$file_path.'images/ic-facebook.png" alt="ic-facebook" style="width:40px;height:40px;margin:0 5px;" /></a></span>
+	<span><a href="https://www.youtube.com/viaviwebtech"><img src="'.$file_path.'images/ic-youtube.png" alt="ic-youtube" style="width:40px;height:40px;margin:0 5px;" /></a></span>
+	<span><a href="https://www.instagram.com/viaviwebtech"><img src="'.$file_path.'images/ic-instagram.png" alt="ic-instagram" style="width:40px;height:40px;margin:0 5px;" /></a></span>
+	</tbody>
+	</table>
+	</td>
+	</tr>			   
+	</tbody>
+	</table>
+	</td>
+	</tr>
+	<tr>
+	<td style="background:#ffffff;color:#424242;padding:20px 0;font-size:14px;border-top:2px solid #fd780a;" colspan="2" align="center" bgcolor="#ffffff">Copyright © '.APP_NAME.'.</td>
+	</tr>
+	</tbody>
+	</table>
+	<br>
+	</div>';
+
+	send_email($to,$recipient_name,$subject,$message);
+
+	$set=array('status' => '1','message' => '','msg' => $app_lang['contact_sent'],'success'=>'1');
+
+	header( 'Content-Type: application/json; charset=utf-8' );
+	echo $val= str_replace('\\/', '/', json_encode($set,JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+	die();
+
+}
+else if($get_method['method_name']=="app_faq")		
+{
+
+	$jsonObj= array();	
+
+	$query="SELECT * FROM tbl_settings WHERE tbl_settings.`id`='1'";
+	$sql = mysqli_query($mysqli,$query);
+
+	$data = mysqli_fetch_assoc($sql);
+
+	$row['status'] = '1';
+	$row['message'] = '';
+	$row['success'] = '1';
+	$row['app_faq'] = stripslashes($data['app_faq']);
+
+	$set = $row;
+
+	header( 'Content-Type: application/json; charset=utf-8' );
+	echo $val= str_replace('\\/', '/', json_encode($set,JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+	die();	
+}
+else if($get_method['method_name']=="app_privacy_policy")		
+{
+
+	$jsonObj= array();	
+
+	$query="SELECT * FROM tbl_settings WHERE tbl_settings.`id`='1'";
+	$sql = mysqli_query($mysqli,$query);
+
+	$data = mysqli_fetch_assoc($sql);
+
+	$row['status'] = '1';
+	$row['message'] = '';
+	$row['app_privacy_policy'] = stripslashes($data['app_privacy_policy']);
+
+	$set= $row;
+
+	header( 'Content-Type: application/json; charset=utf-8' );
+	echo $val= str_replace('\\/', '/', json_encode($set,JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+	die();	
+}
+else if($get_method['method_name']=="app_about")
+{
+	$jsonObj= array();	
+
+	$query="SELECT * FROM tbl_settings WHERE tbl_settings.`id`='1'";
+	$sql = mysqli_query($mysqli,$query)or die(mysqli_error($mysqli));
+
+	$data = mysqli_fetch_assoc($sql);
+
+	$row['status'] = '1';
+	$row['message'] = '';
+	$row['app_name'] = $data['app_name'];
+	$row['app_logo'] = $file_path.'images/'.$data['app_logo'];
+	$row['package_name']=$data['package_name'];
+	$row['app_version'] = $data['app_version'];
+	$row['app_author'] = $data['app_author'];
+	$row['app_contact'] = $data['app_contact'];
+	$row['app_email'] = $data['app_email'];
+	$row['app_website'] = $data['app_website'];
+	$row['app_description'] = stripslashes($data['app_description']);
+	$row['app_developed_by'] = $data['app_developed_by'];
+
+	$set = $row;
+
+	header( 'Content-Type: application/json; charset=utf-8' );
+	echo $val= str_replace('\\/', '/', json_encode($set,JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+	die();	
+}
+else if($get_method['method_name']=="app_terms_conditions"){
+
+	$jsonObj= array();	
+
+	$query="SELECT * FROM tbl_settings WHERE `id` ='1'";
+	$sql = mysqli_query($mysqli,$query);
+
+	$data = mysqli_fetch_assoc($sql);
+
+	$row['status'] = 1;
+	$row['message'] = '';
+	$row['app_terms_conditions'] = stripslashes($data['app_terms_conditions']);
+
+	$set= $row;
+
+	header( 'Content-Type: application/json; charset=utf-8' );
+	echo $val= str_replace('\\/', '/', json_encode($set,JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+	die();	
+}	
+else if($get_method['method_name']=="get_app_details")
+{
+	$jsonObj= array();	
+
+	$query="SELECT * FROM tbl_settings WHERE tbl_settings.`id`='1'";
+	$sql = mysqli_query($mysqli,$query)or die(mysqli_error($mysqli));
+	$data = mysqli_fetch_assoc($sql);
+
+	$row['status'] = '1';
+	$row['message'] = '';
+
+	$row['publisher_id'] = $data['publisher_id'];
+	$row['interstitial_ad'] = $data['interstital_ad'];
+	$row['interstitial_ad_type'] = $data['interstital_ad_type'];
+	$row['interstitial_ad_id'] = ($data['interstital_ad_type']=='facebook') ? $data['interstital_facebook_id'] : $data['interstital_ad_id'];
+	$row['interstitial_ad_click'] = $data['interstital_ad_click'];
+
+	$row['banner_ad'] = $data['banner_ad'];
+	$row['banner_ad_type'] = $data['banner_ad_type'];
+
+	$row['banner_ad_id'] = ($data['banner_ad_type']=='facebook') ? $data['banner_facebook_id'] : $data['banner_ad_id'];
+
+	$row['video_status'] = $data['video_status'] ? 'true' : 'false' ;
+	$row['app_update_status'] = $data['app_update_status'];
+	$row['app_new_version'] = $data['app_new_version'];
+	$row['app_update_desc'] = stripslashes($data['app_update_desc']);
+	$row['app_redirect_url'] = $data['app_redirect_url'];
+	$row['cancel_update_status'] = $data['cancel_update_status'];
+
+	$set= $row;
+
+	header( 'Content-Type: application/json; charset=utf-8' );
+	echo $val= str_replace('\\/', '/', json_encode($set,JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+	die();	
+}		
+else
+{
+	$get_method = checkSignSalt($_POST['data']);
+}
+?>
